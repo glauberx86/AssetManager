@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text;
 using System.Runtime.InteropServices;
-using System.Net.Http;
+using System.IO.Pipes;
 
 public class Worker : BackgroundService
 {
@@ -13,10 +13,8 @@ public class Worker : BackgroundService
     private readonly IDiskMonitor _disk;
     private readonly INetworkMonitor _net;
 
-    private readonly HttpClient _http;
-
-    private const string API_URL = "https://mmvnezkbbmlbxisurubl.supabase.co/functions/v1/rapid-endpoint";
-    private const string API_TOKEN = "asset-monitor-agent-2024";
+    private const string PIPE_NAME = "asset-monitor-pipe";
+    private const int PIPE_CONNECT_TIMEOUT_MS = 5_000;
 
     private const int TIMER = 2_000;
     private readonly int timerSeconds = TIMER / 1000;
@@ -33,35 +31,31 @@ public class Worker : BackgroundService
         _mem = mem;
         _disk = disk;
         _net = net;
-
-        _http = new HttpClient();
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {API_TOKEN}");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation($"Monitor iniciado. Intervalo: {timerSeconds} segundos");
 
-        var cpuUsage = _cpu.GetCpuUsage();
-        var memUsage = _mem.GetMemoryUsage();
-        var (diskUsed, diskTotal) = _disk.GetDiskUsage();
-        var (ip, mac) = _net.GetNetworkInfo();
-
         while (!stoppingToken.IsCancellationRequested)
         {
-            await SendMetricsAsync(); // TODO: Melhorar
+            await SendMetricsAsync(stoppingToken); // TODO: Melhorar
             await Task.Delay(TIMER, stoppingToken);
         }
     }
 
-    private async Task SendMetricsAsync()
+    private async Task SendMetricsAsync(CancellationToken stoppingToken)
     {
         var (diskUsedGb, diskTotalGb) = _disk.GetDiskUsage();
         var (ip, mac) = _net.GetNetworkInfo();
 
-        // TODO: MUDAR PARA ID REAL
+        // TODO: mudar para ID real
         var assetId = Environment.MachineName;
         var hostname = Environment.MachineName;
+
+        var diskUsagePercent = diskTotalGb > 0
+            ? Math.Round((diskUsedGb / diskTotalGb) * 100, 2)
+            : 0;
 
         var payload = new
         {
@@ -69,7 +63,7 @@ public class Worker : BackgroundService
             hostname = hostname,
             cpu_usage = _cpu.GetCpuUsage(),
             memory_usage = _mem.GetMemoryUsage(),
-            disk_usage = Math.Round((diskUsedGb / diskTotalGb) * 100, 2),
+            disk_usage = diskUsagePercent,
             network_in = 0,  // TODO: implementar
             network_out = 0,
             uptime = (long)Environment.TickCount64 / 1000,
@@ -100,26 +94,37 @@ public class Worker : BackgroundService
         };
 
         var json = JsonSerializer.Serialize(payload);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         try
         {
-            var response = await _http.PostAsync(API_URL, content);
+            using var pipeClient = new NamedPipeClientStream(".", PIPE_NAME, PipeDirection.Out);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            cts.CancelAfter(PIPE_CONNECT_TIMEOUT_MS);
 
-            if (!response.IsSuccessStatusCode)
+            await pipeClient.ConnectAsync(cts.Token);
+
+            if (!pipeClient.IsConnected)
             {
-                _logger.LogWarning("Erro ao enviar métricas: {Status}", response.StatusCode);
-                var errorText = await response.Content.ReadAsStringAsync();
-                _logger.LogWarning("Detalhes: {Detail}", errorText);
+                _logger.LogWarning("Nao foi possivel conectar ao named pipe {PipeName}.", PIPE_NAME);
+                return;
             }
-            else
-            {
-                _logger.LogInformation("Métricas enviadas com sucesso.");
-            }
+
+            using var writer = new StreamWriter(pipeClient, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            await writer.WriteLineAsync(json);
+
+            _logger.LogInformation("Metricas enviadas via named pipe.");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Timeout ao conectar ao named pipe {PipeName}.", PIPE_NAME);
+        }
+        catch (IOException ex)
+        {
+            _logger.LogError(ex, "Erro de E/S ao enviar metricas via named pipe.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erro ao enviar métricas.");
+            _logger.LogError(ex, "Erro ao enviar metricas via named pipe.");
         }
     }
 }
