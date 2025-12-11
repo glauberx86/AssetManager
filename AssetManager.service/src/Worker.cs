@@ -4,6 +4,7 @@
 // O tray faz (vai fazer) POST para o backend.
 // TODO: Melhorar coleta, incluir CPU model, RAM total, tráfego de rede.
 // TODO: Implementar reconexão do pipe e manejo de falhas de envio.
+// TODO: Mudar a lógica de cálculo e outras estatiticas para o tray (ex: disk usage / cpu model).
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -83,7 +84,7 @@ public class Worker : BackgroundService
 
             ram_info = new
             {
-                usage_percent = _mem.GetMemoryUsage() // TODO: mostrar total em GB
+                usage_percent = _mem.GetMemoryUsage() // TODO: mostrar total em GB (talvez pegar o total no tray diretamente)
             },
 
             storage_info = new
@@ -116,10 +117,9 @@ public class Worker : BackgroundService
                 return;
             }
 
-            using var writer = new StreamWriter(pipeClient, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+            using var writer = new StreamWriter(pipeClient, Encoding.UTF8) { AutoFlush = true };
             await writer.WriteLineAsync(json);
 
-            _logger.LogInformation("Metricas enviadas via named pipe.");
         }
         catch (OperationCanceledException)
         {
@@ -127,7 +127,7 @@ public class Worker : BackgroundService
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "Erro de E/S ao enviar metricas via named pipe.");
+            _logger.LogError(ex, "Erro de I/O ao enviar metricas via named pipe.");
         }
         catch (Exception ex)
         {
