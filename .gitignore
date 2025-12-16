@@ -365,4 +365,8 @@ FodyWeavers.xsd
 # Installer projects output
 *.msi
 *.exe
-AssetManager.installer\Output\*
+AssetManager.installer/Output
+
+# Environment files
+.env
+AssetManager.tray/appsettings.json

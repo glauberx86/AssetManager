@@ -12,6 +12,7 @@ namespace AssetManager.Tray
         private readonly ContextMenuStrip trayMenu;
         private readonly HttpDebugService _httpDebugService = new();
         private const string ServiceName = "AssetManager";
+        private readonly MetricsWebSocketClient _wsClient;
 
         public TrayForm()
         {
@@ -33,6 +34,11 @@ namespace AssetManager.Tray
                 Text = "Asset Manager Agent",
                 ContextMenuStrip = trayMenu
             };
+            var wsUrl = Program.Configuration["WebSocket:Url"];
+            var wsToken = Program.Configuration["WebSocket:Token"];
+
+            _wsClient = new MetricsWebSocketClient(wsUrl!, wsToken!);
+
             _ = Task.Run(_httpDebugService.StartAsync);
             _ = Task.Run(PipeReadLoop);
             EnsureServiceRunning();
@@ -113,12 +119,13 @@ namespace AssetManager.Tray
                     if (!string.IsNullOrWhiteSpace(json))
                     {
                         HttpDebugService.UpdateSnapshot(json);
+                        await _wsClient.SendAsync(json);
                     }
                 }
                 catch
                 {
-                    // Serviço pode estar indisponível ainda
-                    // ignorar
+                    // serviço pode não estar pronto
+                    // TODO: adicionar logs
                 }
 
                 await Task.Delay(2000);
