@@ -1,4 +1,6 @@
 # AssetManager
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fglauberx86%2FAssetManager.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fglauberx86%2FAssetManager?ref=badge_shield)
+
 
 Sistema para Controle de Ativos
 
@@ -20,3 +22,7 @@ O **AssetManager** é uma aplicação desenvolvida para gerenciar e monitorar at
 ## Licença
 
 Este projeto está licenciado sob a [MIT License](LICENSE).
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fglauberx86%2FAssetManager.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fglauberx86%2FAssetManager?ref=badge_large)
