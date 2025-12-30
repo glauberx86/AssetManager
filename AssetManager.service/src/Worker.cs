@@ -1,7 +1,7 @@
 // CONTEXTO DO PROJETO:
 // Essa porcaria pega informações do PC (CPU, RAM, Disco, Rede)
 // e envia para um System Tray via Named Pipe (asset-monitor-pipe).
-// O tray faz (vai fazer) POST para o backend.
+// O tray faz POST para o backend.
 // TODO: Melhorar coleta, incluir CPU model, RAM total, tráfego de rede.
 // TODO: Implementar reconexão do pipe e manejo de falhas de envio.
 // TODO: Mudar a lógica de cálculo e outras estatiticas para o tray (ex: disk usage / cpu model).
@@ -141,7 +141,7 @@ public class Worker : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                // shutdown normal
+                // Shutdown normal
             }
             catch (Exception ex)
             {

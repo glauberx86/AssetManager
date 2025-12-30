@@ -19,4 +19,4 @@ O **AssetManager** é uma aplicação desenvolvida para gerenciar e monitorar at
 
 ## Licença
 
-Este projeto está licenciado sob a [MIT License](LICENSE).
+Este projeto está licenciado sob a [BSL v1.1](LICENSE).

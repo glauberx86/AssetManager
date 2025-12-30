@@ -74,7 +74,7 @@ public class NetworkMonitor : INetworkMonitor
         }
         catch
         {
-            return null;
+            return null; // TODO: Logar erro no visualizador de eventos
         }
     }
 }
