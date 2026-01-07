@@ -1,36 +1,39 @@
 using System.Runtime.InteropServices;
 
-public interface IMemoryMonitor
+namespace AssetManager.Service
 {
-    float GetMemoryUsage();
-}
-
-public class MemoryMonitor : IMemoryMonitor
-{
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private class MEMORYSTATUSEX
+    public interface IMemoryMonitor
     {
-        public uint dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
-        public uint dwMemoryLoad;
-        public ulong ullTotalPhys;
-        public ulong ullAvailPhys;
-        public ulong ullTotalPageFile;
-        public ulong ullAvailPageFile;
-        public ulong ullTotalVirtual;
-        public ulong ullAvailVirtual;
-        public ulong ullAvailExtendedVirtual;
+        float GetMemoryUsage();
     }
 
-    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX buffer);
-
-    public float GetMemoryUsage()
+    public class MemoryMonitor : IMemoryMonitor
     {
-        var status = new MEMORYSTATUSEX();
-        if (!GlobalMemoryStatusEx(status))
-            return 0;
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+        private class MEMORYSTATUSEX
+        {
+            public uint dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+        }
 
-        ulong used = status.ullTotalPhys - status.ullAvailPhys;
-        return (float)(used * 100.0 / status.ullTotalPhys);
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX buffer);
+
+        public float GetMemoryUsage()
+        {
+            var status = new MEMORYSTATUSEX();
+            if (!GlobalMemoryStatusEx(status))
+                return 0;
+
+            ulong used = status.ullTotalPhys - status.ullAvailPhys;
+            return (float)(used * 100.0 / status.ullTotalPhys);
+        }
     }
 }

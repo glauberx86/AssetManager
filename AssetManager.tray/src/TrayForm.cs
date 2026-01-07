@@ -1,10 +1,14 @@
+// Tenho que logar saporra
+
 using System;
 using System.Windows.Forms;
 using System.ServiceProcess;
 using System.IO.Pipes;
-using System.Net.Http;
+using System.Net.WebSockets;
+using System.Threading;
 using System.Text;
-using System.Text.Json;
+using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace AssetManager.Tray
 {
@@ -14,9 +18,9 @@ namespace AssetManager.Tray
         private readonly ContextMenuStrip trayMenu;
         private readonly HttpDebugService _httpDebugService = new();
         private const string ServiceName = "AssetManager";
-        private static readonly HttpClient _http = new();
-        private readonly string _apiUrl;
-        private readonly string _apiToken;
+        private ClientWebSocket _ws = new ClientWebSocket();
+        private readonly string? _apiUrl;
+        private readonly string? _apiToken;
         private readonly bool _apiEnabled;
         public TrayForm()
         {
@@ -33,23 +37,16 @@ namespace AssetManager.Tray
             // Icon
             trayIcon = new NotifyIcon
             {
-                Icon = SystemIcons.Information,   // TODO: trocar icone
+                Icon = SystemIcons.Information,
                 Visible = true,
                 Text = "Asset Manager Agent",
                 ContextMenuStrip = trayMenu
             };
-            var config = Program.Configuration;
 
+            var config = Program.Configuration;
             _apiUrl = config["Api:Url"];
             _apiToken = config["Api:Token"];
-
             _apiEnabled = !string.IsNullOrWhiteSpace(_apiUrl);
-
-            if (_apiEnabled && !string.IsNullOrWhiteSpace(_apiToken))
-            {
-                _http.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiToken);
-            }
 
             _ = Task.Run(_httpDebugService.StartAsync);
             _ = Task.Run(PipeReadLoop);
@@ -60,22 +57,15 @@ namespace AssetManager.Tray
             try
             {
                 using var sc = new ServiceController(ServiceName);
-
-                if (sc.Status == ServiceControllerStatus.Stopped ||
-                    sc.Status == ServiceControllerStatus.StopPending)
+                if (sc.Status == ServiceControllerStatus.Stopped || sc.Status == ServiceControllerStatus.StopPending)
                 {
                     sc.Start();
                     sc.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show(
-                    $"Erro ao iniciar o serviço {ServiceName}.\n\n{ex.Message}",
-                    "AssetManager",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                // TODO: Log
             }
         }
         private void StopService()
@@ -83,46 +73,44 @@ namespace AssetManager.Tray
             try
             {
                 using var sc = new ServiceController(ServiceName);
-
                 if (sc.Status == ServiceControllerStatus.Running)
                 {
                     sc.Stop();
                     sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                MessageBox.Show(
-                    $"Erro ao parar o serviço {ServiceName}.\n\n{ex.Message}",
-                    "AssetManager",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                //TODO: Log
             }
         }
+
         private void OnSendNow(object? sender, EventArgs e)
         {
-            MessageBox.Show("Envio manual ainda não implementado.");
+            MessageBox.Show("O envio é automático via WebSocket quando há dados no pipe.");
         }
 
-        private void OnExit(object? sender, EventArgs e)
+        private async void OnExit(object? sender, EventArgs e)
         {
             trayIcon.Visible = false;
             StopService();
+
+            if (_ws.State == WebSocketState.Open)
+            {
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "App closing", CancellationToken.None);
+            }
+            _ws.Dispose();
+
             Application.Exit();
         }
+
         private async Task PipeReadLoop()
         {
             while (true)
             {
                 try
                 {
-                    using var pipe = new NamedPipeClientStream(
-                        ".",
-                        "asset-monitor-pipe",
-                        PipeDirection.In
-                    );
-
+                    using var pipe = new NamedPipeClientStream(".", "asset-monitor-pipe", PipeDirection.In);
                     await pipe.ConnectAsync(3000);
 
                     using var reader = new StreamReader(pipe);
@@ -131,36 +119,52 @@ namespace AssetManager.Tray
                     if (!string.IsNullOrWhiteSpace(json))
                     {
                         HttpDebugService.UpdateSnapshot(json);
-                        _ = SendToApiAsync(json);
+                        // Chama o envio via Socket
+                        await SendToWebSocketAsync(json);
                     }
                 }
                 catch
                 {
-                    // Serviço pode estar indisponível ainda
-                    // ignorar
+                    // Pipe indisponível ou erro de leitura, espera e tenta de novo
                 }
                 await Task.Delay(2000);
             }
         }
-        private async Task SendToApiAsync(string json)
+
+        // Retry e send
+        private async Task SendToWebSocketAsync(string json)
         {
-            if (!_apiEnabled)
-                return;
+            if (!_apiEnabled || _apiUrl == null) return;
 
             try
             {
-                using var content = new StringContent(
-                    json,
-                    Encoding.UTF8,
-                    "application/json"
-                );
+                if (_ws.State != WebSocketState.Open)
+                {
+                    if (_ws.State == WebSocketState.Aborted || _ws.State == WebSocketState.Closed)
+                    {
+                        _ws.Dispose();
+                        _ws = new ClientWebSocket();
+                    }
+                    if (!string.IsNullOrWhiteSpace(_apiToken))
+                    {
+                        _ws.Options.SetRequestHeader("Authorization", $"Bearer {_apiToken}");
+                    }
 
-                await _http.PostAsync(_apiUrl!, content);
+                    await _ws.ConnectAsync(new Uri(_apiUrl), CancellationToken.None);
+                }
+
+                // Envia os dados
+                var bytes = Encoding.UTF8.GetBytes(json);
+                await _ws.SendAsync(
+                    new ArraySegment<byte>(bytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None
+                );
             }
             catch
             {
-                // falha silenciosa
-                // tray nunca deve quebrar por rede
+                //TODO: Log
             }
         }
     }
