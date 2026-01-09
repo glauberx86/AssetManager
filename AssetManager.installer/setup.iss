@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "AssetManager"
-#define MyAppVersion "1.0.5"
+#define MyAppVersion "1.0.7"
 #define MyAppPublisher "Borgno"
 #define MyAppExeName "AssetManager.tray.exe"
 

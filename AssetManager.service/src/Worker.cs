@@ -29,11 +29,8 @@ namespace AssetManager.Service
         private readonly IMemoryMonitor _mem;
         private readonly IDiskMonitor _disk;
         private readonly INetworkMonitor _net;
-
         private const string PIPE_NAME = "asset-monitor-pipe";
         private const int COLLECT_INTERVAL_SECONDS = 5;
-
-        // Snapshot atual (thread-safe)
         private readonly object _lock = new();
         private string _latestJson = "{}";
 
@@ -59,13 +56,11 @@ namespace AssetManager.Service
         {
             _logger.LogInformation("AssetManager Worker iniciado.");
 
-            // Loop de coleta
             _ = Task.Run(() => CollectLoop(stoppingToken), stoppingToken);
 
-            // Loop do servidor de pipe
             await PipeServerLoop(stoppingToken);
         }
-        /// Coleta e mantém o último snapshot
+        // Coleta e mantém o último snapshot
         private async Task CollectLoop(CancellationToken token)
         {
             var (diskUsedGb, diskTotalGb) = _disk.GetDiskUsage();
@@ -161,7 +156,6 @@ namespace AssetManager.Service
                         AutoFlush = true
                     };
 
-                    // Envia uma única linha (snapshot atual)
                     await writer.WriteLineAsync(snapshot);
 
                     _logger.LogDebug("Snapshot enviado para cliente do pipe.");
@@ -173,7 +167,7 @@ namespace AssetManager.Service
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Erro no servidor do named pipe.");
-                    await Task.Delay(1000, token); // backoff leve
+                    await Task.Delay(1000, token);
                 }
             }
         }

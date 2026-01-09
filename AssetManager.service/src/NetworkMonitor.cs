@@ -31,17 +31,41 @@ namespace AssetManager.Service
 
             return (ip, mac);
         }
-
+        private string? GetPublicIp()
+        {
+            try
+            {
+                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                var response = client.GetStringAsync("https://api.ipify.org").GetAwaiter().GetResult();
+                return string.IsNullOrWhiteSpace(response) ? null : response.Trim();
+            }
+            catch
+            {
+                return null; // TODO: Logar erro no visualizador de eventos
+            }
+        }
         private string GetCachedPublicIp()
         {
             var now = DateTime.UtcNow;
-            if (_lastIp != null && now - _lastFetch < _refreshInterval)
+
+            if (_lastIp != null && _lastIp != "Not Found" && now - _lastFetch < _refreshInterval)
                 return _lastIp;
 
-            string ip = GetPublicIp() ?? _lastIp ?? "Not Found";
-            _lastIp = ip;
-            _lastFetch = now;
-            return ip;
+            string? newIp = GetPublicIp();
+
+            if (newIp != null)
+            {
+                _lastIp = newIp;
+                _lastFetch = now;
+                return newIp;
+            }
+
+            if (_lastIp != null && _lastIp != "Not Found")
+            {
+                return _lastIp;
+            }
+
+            return "Not Found";
         }
 
         private static string? GetMacAddress()
@@ -63,22 +87,7 @@ namespace AssetManager.Service
                     return mac;
                 }
             }
-
             return null;
-        }
-
-        private string? GetPublicIp()
-        {
-            try
-            {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-                var response = client.GetStringAsync("https://api.ipify.org").GetAwaiter().GetResult();
-                return string.IsNullOrWhiteSpace(response) ? null : response.Trim();
-            }
-            catch
-            {
-                return null; // TODO: Logar erro no visualizador de eventos
-            }
         }
     }
 }
